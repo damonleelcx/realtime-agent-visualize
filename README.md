@@ -11,6 +11,8 @@ Sample output (real NVDA run, ChatGPT era): [`samples/NVDA_analysis.html`](sampl
 — open it in a browser and click a blue event marker to trace it back to its source.
 
 ---
+## Demo
+<img width="640" height="360" alt="2026-07-07 11-46-33" src="https://github.com/user-attachments/assets/910cf49e-69b5-4ee1-83cd-9c9956e4c526" />
 
 ## What it does
 
