@@ -13,15 +13,13 @@ requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "ruptures>=1.1"]
 
 [project.optional-dependencies]
-# Dev/test toolchain — enough to run the offline test suite.
-dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
-# Live data + reporting stack, wired incrementally in P1–P4.
-full = [
-    "requests>=2.31",
-    "openpyxl>=3.1",
-    "python-pptx>=0.6",
-    "python-docx>=1.1",
+# Dev/test toolchain — enough to run the offline test suite (incl. Office renderers).
+dev = [
+    "pytest>=7.4", "ruff>=0.4", "mypy>=1.8",
+    "openpyxl>=3.1", "python-pptx>=0.6", "python-docx>=1.1",
 ]
+# Live data stack (network); Office libs live in dev since the exporters + tests need them.
+full = ["requests>=2.31"]
 # Agent backend (P5). Optional so the scaffold runs without a key.
 sdk = ["claude-agent-sdk>=0.1", "anthropic>=0.40"]
 
@@ -38,13 +36,17 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# Embeds an HTML/JS template; long markup lines don't benefit from wrapping.
+"agent/skills/kline_viz/render.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
 files = ["agent"]
 
 [[tool.mypy.overrides]]
-module = ["requests.*", "yfinance.*", "ruptures.*", "anthropic.*"]
+module = ["requests.*", "yfinance.*", "ruptures.*", "anthropic.*", "openpyxl.*", "pptx.*", "docx.*"]
 ignore_missing_imports = true
 
 # numpy 2.5 stubs use 3.12-only `type` syntax; don't parse them under our 3.11
