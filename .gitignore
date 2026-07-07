@@ -1,0 +1,31 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Caches & generated artifacts
+.cache/
+artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
