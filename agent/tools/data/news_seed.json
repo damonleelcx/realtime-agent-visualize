@@ -1,0 +1,44 @@
+[
+  {
+    "title": "OpenAI launches ChatGPT",
+    "url": "https://openai.com/blog/chatgpt",
+    "published_at": "2022-11-30",
+    "category": "model_release",
+    "summary": "OpenAI releases ChatGPT, a conversational model that kicks off the generative-AI demand cycle."
+  },
+  {
+    "title": "OpenAI releases GPT-4",
+    "url": "https://openai.com/research/gpt-4",
+    "published_at": "2023-03-14",
+    "category": "model_release",
+    "summary": "GPT-4 launches with multimodal input, intensifying enterprise AI compute demand."
+  },
+  {
+    "title": "NVIDIA reports blowout Q1 FY24 data-center revenue",
+    "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2024",
+    "published_at": "2023-05-24",
+    "category": "earnings",
+    "summary": "NVIDIA guides revenue far above expectations on AI data-center demand; stock gaps up."
+  },
+  {
+    "title": "OpenAI DevDay introduces GPTs and the Assistants API",
+    "url": "https://openai.com/blog/new-models-and-developer-products-announced-at-devday",
+    "published_at": "2023-11-06",
+    "category": "product",
+    "summary": "OpenAI expands its platform, broadening AI adoption and inference demand."
+  },
+  {
+    "title": "NVIDIA unveils Blackwell architecture (B200/B100) at GTC",
+    "url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-platform-arrives",
+    "published_at": "2024-03-18",
+    "category": "chip",
+    "summary": "NVIDIA announces the Blackwell GPU platform, its next-generation AI accelerator line."
+  },
+  {
+    "title": "DeepSeek R1 triggers an AI cost-efficiency reassessment",
+    "url": "https://www.deepseek.com/",
+    "published_at": "2025-01-27",
+    "category": "model_release",
+    "summary": "A low-cost competitive model prompts a sharp repricing of AI-hardware demand assumptions."
+  }
+]
