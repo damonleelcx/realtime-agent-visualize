@@ -20,6 +20,8 @@ dev = [
 ]
 # Live data stack (network); Office libs live in dev since the exporters + tests need them.
 full = ["requests>=2.31"]
+# Live web dashboard (P6).
+web = ["fastapi>=0.110", "uvicorn>=0.29"]
 # Agent backend (P5). Optional so the scaffold runs without a key.
 sdk = ["claude-agent-sdk>=0.1", "anthropic>=0.40"]
 
@@ -46,7 +48,10 @@ strict = true
 files = ["agent"]
 
 [[tool.mypy.overrides]]
-module = ["requests.*", "yfinance.*", "ruptures.*", "anthropic.*", "openpyxl.*", "pptx.*", "docx.*"]
+module = [
+    "requests.*", "yfinance.*", "ruptures.*", "anthropic.*",
+    "openpyxl.*", "pptx.*", "docx.*", "fastapi.*", "uvicorn.*", "starlette.*",
+]
 ignore_missing_imports = true
 
 # numpy 2.5 stubs use 3.12-only `type` syntax; don't parse them under our 3.11

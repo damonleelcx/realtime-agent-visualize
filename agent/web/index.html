@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>realtime-agent-visualize · live dashboard</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#252a34; --fg:#e6e8ec; --mut:#8b93a1;
+          --accent:#5c7cfa; --ok:#37b24d; --warn:#f59f00; --err:#e03131; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex;
+           align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:650; }
+  header .tag { font-size:12px; color:var(--mut); }
+  form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-left:auto; }
+  input { background:var(--panel); border:1px solid var(--line); color:var(--fg);
+          border-radius:6px; padding:6px 8px; font-size:13px; }
+  input#ticker { width:80px; text-transform:uppercase; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px;
+           padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .wrap { display:grid; grid-template-columns:340px 1fr; gap:16px; padding:16px 24px; align-items:start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .panel h2 { font-size:13px; margin:0 0 12px; color:var(--mut); text-transform:uppercase;
+              letter-spacing:.04em; font-weight:600; }
+  #steps { list-style:none; margin:0; padding:0; }
+  #steps li { display:flex; gap:10px; align-items:flex-start; padding:7px 0;
+              border-bottom:1px dashed var(--line); font-size:13px; }
+  #steps li:last-child { border-bottom:0; }
+  .ic { width:18px; height:18px; flex:0 0 18px; border-radius:50%; margin-top:1px;
+        border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+        font-size:11px; color:#fff; }
+  li.run .ic { border-color:var(--accent); animation:spin 1s linear infinite; border-top-color:transparent; }
+  li.done .ic { background:var(--ok); border-color:var(--ok); }
+  li.done .ic::after { content:"✓"; }
+  li.err .ic { background:var(--err); border-color:var(--err); }
+  li.err .ic::after { content:"!"; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .name { font-weight:550; }
+  .detail { color:var(--mut); font-size:12px; margin-top:2px; }
+  .retry { color:var(--warn); font-size:12px; margin-top:2px; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line); color:var(--mut); }
+  .summary { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px; }
+  .summary b { color:var(--accent); }
+  #chartwrap { min-height:620px; display:flex; flex-direction:column; gap:10px; }
+  iframe { width:100%; height:640px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .empty { color:var(--mut); font-size:14px; padding:40px; text-align:center;
+           border:1px dashed var(--line); border-radius:10px; }
+  .dl { display:flex; gap:8px; flex-wrap:wrap; }
+  .dl a { font-size:12px; color:var(--fg); background:var(--panel); border:1px solid var(--line);
+          border-radius:6px; padding:5px 10px; text-decoration:none; }
+  .dl a:hover { border-color:var(--accent); }
+  .err-box { color:var(--err); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>realtime-agent-visualize</h1>
+  <span class="tag">watch the agent Harness analyze a stock, live</span>
+  <form id="f">
+    <input id="ticker" value="NVDA" title="Ticker">
+    <input id="start" type="date" value="2022-09-01" title="Start">
+    <input id="end" type="date" value="2023-07-01" title="End">
+    <button id="go" type="submit">Analyze</button>
+  </form>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Agent loop <span id="mode" class="badge">idle</span></h2>
+    <ul id="steps"><li class="idle"><span class="ic"></span><span class="name">Press Analyze to start</span></li></ul>
+    <div id="summary" class="summary"></div>
+    <div id="error" class="err-box"></div>
+  </div>
+  <div class="panel">
+    <h2>Deliverable</h2>
+    <div id="chartwrap">
+      <div class="empty" id="empty">The interactive K-line renders here when the run completes.</div>
+      <div class="dl" id="downloads"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const stepsEl = $("steps"), summaryEl = $("summary"), errEl = $("error"),
+      modeEl = $("mode"), emptyEl = $("empty"), dlEl = $("downloads"), goBtn = $("go");
+let es = null;
+const rows = {};   // plan-step text -> <li>
+
+function reset() {
+  stepsEl.innerHTML = ""; summaryEl.innerHTML = ""; errEl.textContent = "";
+  dlEl.innerHTML = ""; for (const k in rows) delete rows[k];
+  emptyEl.style.display = "block"; emptyEl.textContent = "Running…";
+  const old = document.getElementById("frame"); if (old) old.remove();
+}
+
+function addRow(text) {
+  const li = document.createElement("li");
+  li.className = "idle";
+  li.innerHTML = `<span class="ic"></span><div><div class="name"></div></div>`;
+  li.querySelector(".name").textContent = text;
+  stepsEl.appendChild(li);
+  return li;
+}
+
+function findRow(step) {                       // act/observe use short names; plan rows are longer
+  const key = Object.keys(rows).find(t => t.toLowerCase().startsWith(step.toLowerCase()));
+  return key ? rows[key] : null;
+}
+
+function onEvent(ev) {
+  const d = JSON.parse(ev.data);
+  switch (d.type) {
+    case "mode":
+      modeEl.textContent = d.llm ? "LLM curation ON" : "no key → K-line only";
+      modeEl.style.color = d.llm ? "var(--ok)" : "var(--warn)";
+      break;
+    case "plan":
+      stepsEl.innerHTML = "";
+      d.steps.forEach(s => { rows[s] = addRow(s); });
+      break;
+    case "act": {
+      const li = findRow(d.step); if (li) li.className = "run";
+      break;
+    }
+    case "observe": {
+      const li = findRow(d.step);
+      if (li) {
+        li.className = "done";
+        const det = document.createElement("div");
+        det.className = "detail"; det.textContent = d.detail;
+        li.querySelector("div").appendChild(det);
+      }
+      break;
+    }
+    case "retry": {
+      const li = findRow(d.step);
+      if (li) { const r = document.createElement("div"); r.className = "retry";
+                r.textContent = `retry ${d.attempt}: ${d.error}`; li.querySelector("div").appendChild(r); }
+      break;
+    }
+    case "validate": {
+      const li = findRow("validate"); if (li) li.className = "done";
+      break;
+    }
+    case "result":
+      summaryEl.innerHTML =
+        `<span>bars <b>${d.bars}</b></span><span>inflections <b>${d.inflections}</b></span>` +
+        `<span>events <b>${d.events}</b></span><span>alignments <b>${d.alignments}</b></span>`;
+      break;
+    case "artifacts":
+      if (d.html) {
+        emptyEl.style.display = "none";
+        const f = document.createElement("iframe");
+        f.id = "frame"; f.src = d.html;
+        $("chartwrap").insertBefore(f, dlEl);
+      }
+      dlEl.innerHTML = "";
+      d.items.forEach(it => {
+        const a = document.createElement("a");
+        a.href = it.url; a.textContent = "↓ " + it.name; a.setAttribute("download", "");
+        dlEl.appendChild(a);
+      });
+      break;
+    case "error":
+      errEl.textContent = "Run failed: " + d.message;
+      emptyEl.textContent = "Run failed — see the loop panel.";
+      break;
+    case "done":
+      finish();
+      break;
+  }
+}
+
+function finish() { if (es) { es.close(); es = null; } goBtn.disabled = false; goBtn.textContent = "Analyze"; }
+
+$("f").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (es) es.close();
+  reset();
+  goBtn.disabled = true; goBtn.textContent = "Running…";
+  const qs = new URLSearchParams({
+    ticker: $("ticker").value.trim() || "NVDA",
+    start: $("start").value, end: $("end").value,
+  });
+  es = new EventSource("/api/run?" + qs.toString());
+  es.onmessage = onEvent;
+  es.onerror = () => { if (goBtn.disabled) { errEl.textContent = "connection lost"; } finish(); };
+});
+</script>
+</body>
+</html>

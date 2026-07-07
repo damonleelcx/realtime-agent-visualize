@@ -1,109 +1,150 @@
 # realtime-agent-visualize · 实时数据 Agent 与可视化
 
-An **autonomous agent** that reviews a stock's price history, aligns it with same-period industry
+An **autonomous agent** that reviews a stock's price history, aligns it with same-period AI-industry
 events, marks the causal moments on an interactive K-line chart, and produces **traceable**
 deliverables (HTML + Word / PPT / Excel) where every conclusion links back to its raw source.
 
-> Example task the agent completes on its own:
+> The task the agent completes on its own:
 > *"回顾英伟达（NVDA）近五年行情，梳理同期 AI 行业大事件，在 K 线图上标记行情拐点触发时刻的主要事件与影响评级，产物可交互、可溯源，最终生成一个 HTML。"*
 
----
-
-## Status
-
-| Phase | What | State |
-|-------|------|-------|
-| Docs | Architecture + per-phase spec/plan/test | ✅ [`docs/`](docs/00-overview.md) |
-| **P0** | Scaffolding, shared data contract, CLI, secret isolation, tests | ✅ **done** |
-| P1 | Data tools (`market_data`, `news_fetch`) + provenance + cache | ⏳ next |
-| P2 | Deterministic inflection detector | ⏳ |
-| P3 | Event-curation + alignment subagents | ⏳ |
-| P4 | Interactive HTML + Word/PPT/Excel exporters | ⏳ |
-| P5 | Loop/Harness orchestration + end-to-end tests | ⏳ |
-
-At P0 the agent runs end-to-end as a **skeleton**: it prints its plan and returns a well-formed
-(empty) result. No data is fetched or rendered yet — that arrives in P1–P4.
+Sample output (real NVDA run, ChatGPT era): [`samples/NVDA_analysis.html`](samples/NVDA_analysis.html)
+— open it in a browser and click a blue event marker to trace it back to its source.
 
 ---
 
-## Quick start (local, one command)
+## What it does
 
-Requires **Python 3.11+** (repo tested on 3.13). No API key needed for the scaffold.
+Given a natural-language task, the agent autonomously:
+
+1. **Fetches market data** (OHLCV) and **industry news** for the same window — two source categories,
+   both keyless.
+2. **Detects price inflections** (turning points, breakouts, breakdowns) with a *deterministic
+   algorithm* — re-runnable, not a model guess.
+3. **Curates the material AI events** and assigns impact ratings, then **aligns** each inflection to
+   the event(s) that plausibly caused it — the only LLM steps, each grounded in a cited source.
+4. **Renders four deliverables** from one payload: an interactive self-contained **HTML** (K-line +
+   clickable event→source drill-down), plus **xlsx / pptx / docx**.
+
+Every datum and conclusion carries a clickable `source_url` from fetch time, so the whole thing is
+**可溯源** (traceable) end to end.
+
+---
+
+## Quick start (local)
+
+Requires **Python 3.11+** (tested on 3.13).
 
 ```bash
-# 1. from the repo root, create a venv and install the dev toolchain
+# 1. venv + install (dev = test toolchain + Office renderers; all offline tests run with this)
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. run the agent (P0: prints the plan + an empty, well-formed result)
-python -m agent.run "Analyze NVDA over the last 5 years and mark AI events on inflection points"
+# 2. run the full suite offline — no network, no API key (81 tests)
+pytest -q
 ```
 
-Expected output: a numbered `PLAN:` (the tool/subagent pipeline) followed by a `RESULT` JSON block.
+### Run the agent for real
+
+The pipeline is keyless *except* the LLM curation step (P3). Add a key, then run:
+
+```bash
+pip install -e ".[dev,full,sdk]"     # + requests (live data) + anthropic (LLM)
+cp .env.example .env                 # then put your key in .env:  ANTHROPIC_API_KEY=...
+set -a && . ./.env && set +a         # load it (zsh/bash safe)
+
+python -m agent.run "Analyze NVDA over the last 5 years and mark AI events on inflection points" \
+    --ticker NVDA --start 2022-09-01 --end 2023-07-01 --outputs html,xlsx,pptx,docx --out-dir artifacts
+```
+
+It prints the plan, runs the pipeline, and writes the four artifacts:
+
+```
+PLAN:  1. fetch market data … 8. validate provenance + artifacts
+RESULT:  NVDA 2022-09-01..2023-07-01  bars=208 inflections=4 events=3 alignments=3
+ARTIFACTS:  artifacts/NVDA_analysis.{html,xlsx,pptx,docx}
+```
+
+- **Offline / no key:** `python -m agent.run "…" --plan-only` prints the plan without running anything.
+- **Where do I get a key?** [console.anthropic.com](https://console.anthropic.com) → API Keys. It goes
+  in `.env` only (git-ignored) and is **never** written into any produced artifact.
+
+### Live dashboard — watch the agent loop (optional)
+
+A local web app where you enter a ticker and **watch the Harness stream
+`Plan→Act→Observe→Validate` in real time**, then the interactive chart renders inline with the
+Office files as downloads:
+
+```bash
+pip install -e ".[dev,full,web]"     # + fastapi/uvicorn
+python -m agent.web                  # → http://127.0.0.1:8000
+```
+
+Runs the real pipeline with LLM curation when `ANTHROPIC_API_KEY` is set; without a key it degrades
+gracefully to K-line + inflections. Same-origin, self-contained — no CDN/CORS. See
+[`docs/phases/P6-live-dashboard.md`](docs/phases/P6-live-dashboard.md).
 
 ---
 
 ## How to test
 
 ```bash
-# unit + contract + CLI + security tests (P0 suite)
-pytest -q
-
-# lint + strict types (same gates CI runs)
-ruff check agent tests
-mypy agent
+pytest -q                       # 81 tests, all offline (no network, no key)
+ruff check agent tests          # lint  (CI gate)
+mypy agent                      # strict types  (CI gate)
 ```
 
-The P0 suite covers, per [`docs/phases/P0-scaffolding.md`](docs/phases/P0-scaffolding.md):
+| Suite | Covers |
+|-------|--------|
+| `test_models` / `test_cli` / `test_security` | data contract, CLI/plan wiring, secret isolation (P0) |
+| `test_market_data` / `test_news_fetch` | fetch tools, fallback ladders, provenance, caching (P1) |
+| `test_detect_inflections` | deterministic detector — golden values, determinism, gap/ramp cases (P2) |
+| `test_event_curator` / `test_signal_analyst` | LLM subagents via a **stub**: citation integrity, dedup, injection defense, temporal sanity (P3) |
+| `test_report_builder` | self-contained HTML, escaping, xlsx/pptx/docx structure, no-secret, no-network (P4) |
+| `test_invariants` | **P-INV-1..5** over a full fixture run (P5) |
+| `test_integration` | determinism, retry, termination cap, graceful degradation, CLI smoke (P5) |
 
-| Test file | Covers | ID |
-|-----------|--------|----|
-| `tests/test_models.py` | models import, are frozen/immutable, and `AnalysisResult` round-trips through JSON | T0.1, T0.2 |
-| `tests/test_cli.py` | `python -m agent.run` exits 0 and emits a valid plan + result; façade returns a well-formed empty result | T0.3 |
-| `tests/test_security.py` | `.env` is git-ignored and uncommitted; `.env.example` holds no real secret | T0.4 (P-INV-4) |
+Tests never touch the network and don't need an API key — the LLM steps run against a deterministic
+stub. To exercise the **live** path end-to-end: `python examples/live_smoke.py`.
 
-Tests use **no network** and **no API key** — they run on a fresh clone.
+The five cross-cutting invariants asserted throughout: **P-INV-1** provenance completeness ·
+**P-INV-2** citation integrity · **P-INV-3** temporal sanity · **P-INV-4** no secret in artifacts ·
+**P-INV-5** self-contained HTML.
 
 ---
 
-## Architecture (one screen)
+## Architecture
 
-Five-layer Harness model. Full rationale in [`docs/00-overview.md`](docs/00-overview.md).
+Five-layer Harness model. Full rationale in [`docs/00-overview.md`](docs/00-overview.md); the tour is
+in [`docs/design-writeup.md`](docs/design-writeup.md).
 
 ```
-Loop  (CLI: sense → decide → act → observe)                      agent/run.py
- └─ Harness / Orchestrator  (Plan → Act → Observe → Validate)    agent/orchestrator.py
-      ├─ Tools      atomic, DETERMINISTIC, no LLM inside         agent/tools/       (P1–P2)
-      │   market_data · news_fetch · detect_inflections · artifact_io
-      ├─ Subagents  isolated context, judgement only (LLM here)  agent/subagents/   (P3–P4)
-      │   event_curator · signal_analyst · report_builder
-      └─ Skills     injected instructions + templates            agent/skills/      (P3–P4)
-          kline-viz · event-align · office-export
+Loop        agent/run.py          sense task → hand one goal to Harness → stop on done/cap
+Harness     agent/orchestrator.py Plan → Act → Observe → Validate → Retry  (turn-capped)
+  Tools     agent/tools/          market_data · news_fetch · detect_inflections · artifact_io   (deterministic, no LLM)
+  Subagents agent/subagents/      event_curator · signal_analyst · report_builder               (isolated context; LLM here)
+  Skills    agent/skills/         event-align · kline-viz · office-export                        (injected know-how + templates)
 ```
 
-- **Tools = reproducibility.** Anything a reader must re-check (prices, inflection math) is plain
-  code with no model in the loop.
-- **Subagents = isolated judgement.** Language tasks (which headlines are material? how strong is
-  the causal link?) run in their own context; the orchestrator only sees the structured summary.
-- **Skills = reusable know-how.** Rendering the K-line or a PPT framework is packaged once and
-  loaded on demand.
-
-Every record carries a [`Provenance`](agent/models.py) (`source_url` + `fetched_at`) from fetch time,
-so any marker in the final HTML links back to the exact datum or article behind it.
+- **Tools = reproducibility.** Prices and the inflection math a reviewer re-checks are plain code.
+- **Subagents = isolated judgement AND trust boundaries.** The LLM proposes; the subagent code
+  enforces citation integrity / temporal sanity / injection defense regardless of what it returns.
+- **Skills = reusable know-how.** The ECharts K-line and the Office layouts are packaged once.
+- **Backend swap** ([`agent/backend.py`](agent/backend.py)): the orchestrator depends only on an
+  `LLMClient` protocol. The default is the bare Messages-API client; swapping to the Claude Agent SDK
+  is a one-module change — the tool/subagent/skill boundaries are ours, not the SDK's.
 
 ---
 
 ## Security & front-end safety (by construction)
 
 - **No secrets in the repo or in any artifact.** `.env` is git-ignored; only `.env.example` is
-  committed; the default data path is **keyless**. A test asserts `.env` is ignored and the template
-  holds no real value.
-- **Self-contained deliverables (P4).** The produced HTML inlines/vendors ECharts — no CDN `<script
-  src>` — so it opens offline via `file://` with no CORS or supply-chain exposure.
-- **Fetched content is data, not instructions.** Curation subagents summarize/rate headlines; they
-  never act on anything a headline "asks". All interpolated text is HTML-escaped.
-
-Details: [`docs/00-overview.md#8`](docs/00-overview.md#8-security-model-system-design-step-20--prompts-explicit-asks).
+  committed; default data path is keyless. A CI grep gate scans `samples/`/`artifacts/`; a test
+  asserts `.env` is untracked.
+- **Self-contained HTML.** ECharts is vendored and **inlined** — no CDN `<script src>` — so the file
+  opens offline via `file://` with no CORS or supply-chain exposure.
+- **Fetched content is data, not instructions.** Curation subagents wrap headlines in an "untrusted"
+  envelope and never act on anything inside them; every interpolated field is `html.escape`d and every
+  URL validated before it becomes an `href`.
 
 ---
 
@@ -111,46 +152,28 @@ Details: [`docs/00-overview.md#8`](docs/00-overview.md#8-security-model-system-d
 
 ```
 agent/
-  run.py           CLI entrypoint (Loop)
-  orchestrator.py  Harness: plan → act → observe → validate  (P0 stub)
-  models.py        shared, provenance-carrying data contract
-  cache.py         on-disk keyed cache (sha256(source|args))
-  tools/           deterministic tools           (filled P1–P2)
-  subagents/       isolated-context LLM agents    (filled P3–P4)
-  skills/          templates + injected know-how  (filled P3–P4)
-docs/              overview, conventions, per-phase spec/plan/test
-tests/             unit + contract + CLI + security
-samples/           committed example outputs      (added P5)
-artifacts/         generated deliverables (git-ignored)
+  run.py            CLI entrypoint (Loop)
+  orchestrator.py   Harness: plan → act → observe → validate → retry (turn-capped)
+  backend.py        LLM backend seam (SDK ↔ bare-API swap)
+  llm.py            LLMClient protocol + AnthropicClient (structured output)
+  models.py         shared, provenance-carrying data contract
+  cache.py          on-disk keyed cache
+  tools/            deterministic tools (no LLM)
+  subagents/        isolated-context subagents (event_curator, signal_analyst, report_builder)
+  skills/           templates + injected know-how (event-align, kline-viz, office-export + vendor/)
+docs/               overview, conventions, per-phase spec/plan/test, design writeup, AI log
+tests/              81 tests: unit · contract · integration · security · invariants
+samples/            committed example deliverables (real NVDA run)
+examples/           live_smoke.py — end-to-end against the real model
+artifacts/          generated deliverables (git-ignored)
 ```
 
 ---
 
-## Design docs
+## Docs
 
 - [00 · Overview & architecture](docs/00-overview.md) — requirements, scale, SDK choice, security, trade-offs
 - [01 · Conventions & contracts](docs/01-conventions.md) — provenance schema, data records, test strategy, invariants
+- [Design writeup](docs/design-writeup.md) — structure + the five decisions that shaped it
+- [AI-development log](docs/ai-development-log.md) — AI tools used, AI's role, key human judgement/edits
 - Per-phase spec/plan/test: [P0](docs/phases/P0-scaffolding.md) · [P1](docs/phases/P1-data-tools.md) · [P2](docs/phases/P2-analysis-inflection.md) · [P3](docs/phases/P3-event-curation.md) · [P4](docs/phases/P4-visualization-artifacts.md) · [P5](docs/phases/P5-orchestration-testing.md)
-
----
-
-## AI-assisted development log
-
-This project is built with AI coding assistance (Claude Code). The process is recorded as it goes:
-
-- **AI tools used:** Claude Code (Opus) as the primary pair — planning, doc authoring, and
-  implementation.
-- **AI's role so far:**
-  - Drafted the architecture and the per-phase spec/plan/test docs. The six phase docs were fanned
-    out to **parallel subagents** working from a shared template + the two anchor docs, then reviewed
-    for consistency — mirroring the tool/subagent split the product itself uses.
-  - Implemented P0: the `models.py` contract, cache, orchestrator stub, CLI, tests, and CI.
-- **Key human judgement / edits:**
-  - Chose the **Claude Agent SDK** (tools/subagents/skills as first-class primitives) over LangGraph
-    to make the graded architecture axis explicit.
-  - Set the non-negotiable that **inflection detection is a deterministic algorithm, not an LLM** —
-    auditability over convenience.
-  - Made **provenance a first-class field from fetch time** and required **self-contained artifacts**
-    to satisfy the no-secret / no-CORS constraints by construction.
-
-This section is extended at each phase (P5 consolidates the full log).
