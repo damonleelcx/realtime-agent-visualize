@@ -25,8 +25,13 @@ def test_env_example_exists() -> None:
     assert (REPO / ".env.example").is_file()
 
 
-def test_dotenv_is_not_committed() -> None:
-    assert not (REPO / ".env").exists(), ".env must never be committed"
+def test_dotenv_is_not_tracked_by_git() -> None:
+    # A local .env is expected (it holds the user's key); it must never be *tracked*.
+    proc = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", ".env"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert proc.returncode != 0, ".env must not be tracked by git"
 
 
 def test_env_is_gitignored() -> None:

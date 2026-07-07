@@ -8,16 +8,15 @@ version = "0.1.0"
 description = "Autonomous market-data analysis agent with traceable, interactive deliverables"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []  # P0 core is stdlib-only; feature deps live in extras below
+# Core analysis deps (the deterministic detector needs these). Network/reporting
+# libraries stay in the `full` extra so tests install light.
+dependencies = ["numpy>=1.26", "ruptures>=1.1"]
 
 [project.optional-dependencies]
-# Dev/test toolchain — enough to run the P0 test suite.
+# Dev/test toolchain — enough to run the offline test suite.
 dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
-# Full data + reporting stack, wired incrementally in P1–P4.
+# Live data + reporting stack, wired incrementally in P1–P4.
 full = [
-    "yfinance>=0.2",
-    "pandas>=2.0",
-    "ruptures>=1.1",
     "requests>=2.31",
     "openpyxl>=3.1",
     "python-pptx>=0.6",
@@ -45,8 +44,15 @@ strict = true
 files = ["agent"]
 
 [[tool.mypy.overrides]]
-module = ["requests.*", "yfinance.*"]
+module = ["requests.*", "yfinance.*", "ruptures.*"]
 ignore_missing_imports = true
+
+# numpy 2.5 stubs use 3.12-only `type` syntax; don't parse them under our 3.11
+# target — treat numpy as untyped rather than bump the whole project's target.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
