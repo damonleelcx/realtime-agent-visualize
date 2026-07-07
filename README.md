@@ -75,12 +75,14 @@ A local web app where you enter a ticker and **watch the Harness stream
 Office files as downloads:
 
 ```bash
-pip install -e ".[dev,full,web]"     # + fastapi/uvicorn
-python -m agent.web                  # → http://127.0.0.1:8000
+pip install -e ".[dev,full,web,sdk]"  # + fastapi/uvicorn (web) + anthropic (LLM curation)
+cp .env.example .env                   # then put your key in .env:  ANTHROPIC_API_KEY=...
+python -m agent.web                    # → http://127.0.0.1:8000
 ```
 
-Runs the real pipeline with LLM curation when `ANTHROPIC_API_KEY` is set; without a key it degrades
-gracefully to K-line + inflections. Same-origin, self-contained — no CDN/CORS. See
+Runs the real pipeline with LLM curation when `ANTHROPIC_API_KEY` is set (the server loads `.env`
+automatically); without a key it degrades gracefully to K-line + inflections. Same-origin,
+self-contained — no CDN/CORS. See
 [`docs/phases/P6-live-dashboard.md`](docs/phases/P6-live-dashboard.md).
 
 ---
@@ -176,4 +178,4 @@ artifacts/          generated deliverables (git-ignored)
 - [01 · Conventions & contracts](docs/01-conventions.md) — provenance schema, data records, test strategy, invariants
 - [Design writeup](docs/design-writeup.md) — structure + the five decisions that shaped it
 - [AI-development log](docs/ai-development-log.md) — AI tools used, AI's role, key human judgement/edits
-- Per-phase spec/plan/test: [P0](docs/phases/P0-scaffolding.md) · [P1](docs/phases/P1-data-tools.md) · [P2](docs/phases/P2-analysis-inflection.md) · [P3](docs/phases/P3-event-curation.md) · [P4](docs/phases/P4-visualization-artifacts.md) · [P5](docs/phases/P5-orchestration-testing.md)
+- Per-phase spec/plan/test: [P0](docs/phases/P0-scaffolding.md) · [P1](docs/phases/P1-data-tools.md) · [P2](docs/phases/P2-analysis-inflection.md) · [P3](docs/phases/P3-event-curation.md) · [P4](docs/phases/P4-visualization-artifacts.md) · [P5](docs/phases/P5-orchestration-testing.md) · [P6](docs/phases/P6-live-dashboard.md)
