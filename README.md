@@ -12,7 +12,7 @@ Sample output (real NVDA run, ChatGPT era): [`samples/NVDA_analysis.html`](sampl
 
 ---
 ## Demo
-<img width="640" height="360" alt="2026-07-07 11-46-33" src="https://github.com/user-attachments/assets/910cf49e-69b5-4ee1-83cd-9c9956e4c526" />
+<img width="480" height="285" alt="20260708-111456" src="https://github.com/user-attachments/assets/f8e36c56-794f-419a-a59a-b83ae5bf3d9c" />
 
 ## What it does
 
