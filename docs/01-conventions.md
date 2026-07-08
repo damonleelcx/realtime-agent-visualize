@@ -16,7 +16,7 @@ deliverable "可溯源": a marker in the HTML can name the exact source URL and 
 
 @dataclass(frozen=True)
 class Provenance:
-    source: str          # "yfinance" | "stooq" | "hackernews" | "yahoo_rss" | "seed"
+    source: str          # "yfinance" | "stooq" | "hackernews" | "yahoo_rss"
     source_url: str      # canonical URL a human can click to verify (never empty)
     fetched_at: str      # ISO-8601 UTC, e.g. "2025-07-07T05:00:00Z"
     query: str = ""      # the exact query/ticker/range used, for reproducibility
@@ -157,7 +157,7 @@ Boundary rules:
 
 ## 6. Error handling & degradation
 
-- Primary source fails → **fall back** to the secondary (yfinance→stooq, HN→RSS→seed) and record
+- Primary source fails → **fall back** to the secondary (yfinance→stooq, HN→RSS) and record
   the actual source in `Provenance.source`. Never fabricate data to fill a gap.
 - If news is entirely unavailable, the run still produces the K-line + inflections, with events empty
   and a visible "no events sourced" note — **graceful degradation**, not a hard fail.

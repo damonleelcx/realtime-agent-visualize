@@ -161,7 +161,7 @@ The SDK's tool/subagent/skill primitives let us *demonstrate* the architecture d
 | Category | Primary | Fallback | Auth |
 |---|---|---|---|
 | **Market (OHLCV)** | `yfinance` (Yahoo daily bars) | Stooq CSV (`stooq.com`) | **none** (keyless) |
-| **News / events** | Hacker News Algolia API (`hn.algolia.com`) | Yahoo Finance RSS / a curated seed file | **none** (keyless) |
+| **News / events** | Hacker News Algolia API (`hn.algolia.com`, historical search) | Yahoo Finance RSS | **none** (keyless) |
 
 Keyless sources are the **default path** precisely so that the "no secrets in repo / front-end" requirement is satisfied by construction. If a keyed premium source is ever added, its key lives only in `.env` (git-ignored) and is read at fetch time — it never enters an artifact.
 

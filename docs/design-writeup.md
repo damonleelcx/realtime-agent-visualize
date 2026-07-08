@@ -66,10 +66,12 @@ language and `AnalysisResult` is the single payload all four exporters render.
 
 ## Known limitations / next steps
 
-- News breadth depends on keyless sources; for a specific narrow query HN may
-  return nothing in-range and the ladder falls back to the seed file (visible via
-  `Provenance.source`). A keyed premium source would widen coverage — its key
-  would live only in `.env`.
+- News is **fully dynamic** — pulled live from Hacker News (Algolia historical
+  search) → Yahoo RSS at run time, then curated by the LLM into material events.
+  Nothing about the events is hardcoded. Breadth therefore depends on what those
+  keyless sources return for the query/window; a keyed premium source (e.g. Alpha
+  Vantage News, Finnhub) would widen coverage and would slot in behind the same
+  `Provenance` stamping, its key living only in `.env`.
 - Alignment is a bounded-window heuristic with an LLM confidence, not a causal
   model; it's designed to be *auditable* (every link cites a source), not proven.
 - The Claude Agent SDK backend is scaffolded behind the façade but the shipped

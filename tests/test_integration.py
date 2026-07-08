@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from agent.orchestrator import TerminationError, run
+from agent.orchestrator import RunCancelled, TerminationError, run
 from tests.integration_fixtures import (
     FROZEN,
     always_fails_market_data,
@@ -57,6 +57,17 @@ def test_wedged_step_hits_termination_cap(tmp_path: Path) -> None:
             "NVDA", "2023-05-01", "2023-05-25", ["html"],
             client=stub_llm(), clock=lambda: FROZEN, out_dir=str(tmp_path),
             market_data_fn=always_fails_market_data, news_fetch_fn=fixture_news,
+        )
+
+
+# --- cancellation: should_cancel stops the run (dashboard Stop button) ----- #
+def test_should_cancel_stops_run(tmp_path: Path) -> None:
+    with pytest.raises(RunCancelled):
+        run(
+            "NVDA", "2023-05-01", "2023-05-25", ["html"],
+            client=stub_llm(), clock=lambda: FROZEN, out_dir=str(tmp_path),
+            market_data_fn=fixture_market_data, news_fetch_fn=fixture_news,
+            should_cancel=lambda: True,  # cancelled → stops at the first step boundary
         )
 
 

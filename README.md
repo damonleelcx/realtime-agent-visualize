@@ -41,7 +41,7 @@ Requires **Python 3.11+** (tested on 3.13).
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. run the full suite offline — no network, no API key (81 tests)
+# 2. run the full suite offline — no network, no API key (90 tests)
 pytest -q
 ```
 
@@ -92,7 +92,7 @@ self-contained — no CDN/CORS. See
 ## How to test
 
 ```bash
-pytest -q                       # 81 tests, all offline (no network, no key)
+pytest -q                       # 90 tests, all offline (no network, no key)
 ruff check agent tests          # lint  (CI gate)
 mypy agent                      # strict types  (CI gate)
 ```
@@ -166,7 +166,7 @@ agent/
   subagents/        isolated-context subagents (event_curator, signal_analyst, report_builder)
   skills/           templates + injected know-how (event-align, kline-viz, office-export + vendor/)
 docs/               overview, conventions, per-phase spec/plan/test, design writeup, AI log
-tests/              81 tests: unit · contract · integration · security · invariants
+tests/              90 tests: unit · contract · integration · security · invariants
 samples/            committed example deliverables (real NVDA run)
 examples/           live_smoke.py — end-to-end against the real model
 artifacts/          generated deliverables (git-ignored)

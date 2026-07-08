@@ -28,10 +28,30 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..backend import default_client
-from ..orchestrator import TerminationError, ValidationError, _default_range, run
+from ..models import AnalysisResult
+from ..orchestrator import RunCancelled, TerminationError, ValidationError, _default_range, run
 
 HERE = Path(__file__).parent
 RUNS = Path("artifacts/web")
+
+
+def _event_cards(result: AnalysisResult) -> list[dict[str, Any]]:
+    """Flatten curated events (+ alignment info) for the chat to present as cards."""
+    aln = {(e.title, e.date): a for a in result.alignments for e in a.events}
+    cards: list[dict[str, Any]] = []
+    for e in result.events:
+        a = aln.get((e.title, e.date))
+        cards.append({
+            "title": e.title, "date": e.date, "impact": e.impact.value,
+            "rationale": e.rationale, "source": e.news_refs[0] if e.news_refs else "",
+            "aligned": a is not None,
+            "inflection": a.inflection.date if a else None,
+            "kind": a.inflection.kind.value if a else None,
+            "lag": a.lag_days if a else None,
+            "confidence": a.confidence if a else None,
+        })
+    cards.sort(key=lambda c: c["date"])
+    return cards
 
 
 class NullLLM:
@@ -79,6 +99,7 @@ def create_app() -> FastAPI:
         have_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
         client: Any = default_client() if have_key else NullLLM()
         q: queue.Queue[Any] = queue.Queue()
+        cancel = threading.Event()  # set when the client disconnects / clicks Stop
 
         def worker() -> None:
             q.put({"type": "mode", "llm": have_key, "ticker": ticker, "range": [s, e]})
@@ -87,7 +108,9 @@ def create_app() -> FastAPI:
                     ticker or "NVDA", s, e,
                     [o.strip() for o in outputs.split(",") if o.strip()],
                     client=client, out_dir=str(out_dir), on_event=q.put,
+                    should_cancel=cancel.is_set,
                 )
+                q.put({"type": "events", "items": _event_cards(rr.result)})
                 items = [
                     {"name": Path(p).name, "url": f"/runs/{run_id}/{Path(p).name}"}
                     for p in rr.artifacts
@@ -95,6 +118,8 @@ def create_app() -> FastAPI:
                 html = next((it["url"] for it in items if it["name"].endswith(".html")), None)
                 q.put({"type": "artifacts", "items": items, "html": html})
                 q.put({"type": "done"})
+            except RunCancelled:
+                q.put({"type": "stopped"})
             except (TerminationError, ValidationError) as exc:
                 q.put({"type": "error", "message": str(exc)})
             except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
@@ -106,11 +131,14 @@ def create_app() -> FastAPI:
 
         async def gen() -> AsyncGenerator[str, None]:
             loop = asyncio.get_event_loop()
-            while True:
-                item = await loop.run_in_executor(None, q.get)
-                if item is None:
-                    break
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+            try:
+                while True:
+                    item = await loop.run_in_executor(None, q.get)
+                    if item is None:
+                        break
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+            finally:
+                cancel.set()  # stream closed (Stop / disconnect) → cancel the pipeline
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 

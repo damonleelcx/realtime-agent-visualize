@@ -10,7 +10,7 @@ import pytest
 
 from agent.cache import JsonCache
 from agent.tools._util import valid_http_url
-from agent.tools.errors import DataSourceError, EmptyResultError
+from agent.tools.errors import DataSourceError
 
 # `news_fetch` function is re-exported on the package, shadowing the submodule
 # attribute — import the module object explicitly for monkeypatching.
@@ -35,14 +35,18 @@ def test_parse_hn_golden_and_permalink() -> None:
     assert items[1].url == "https://news.ycombinator.com/item?id=33800000"
 
 
-# --- T1.3 fallback ladder HN → RSS → seed ----------------------------------- #
-def test_fallback_ladder_to_seed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+# --- T1.3 dynamic fallback: HN fails → Yahoo RSS is used -------------------- #
+def test_fallback_hn_to_rss(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    rss = (
+        '<?xml version="1.0"?><rss><channel>'
+        '<item><title>NVIDIA news</title><link>https://finance.example.com/nvda</link>'
+        "<pubDate>Wed, 30 Nov 2022 00:00:00 GMT</pubDate></item>"
+        "</channel></rss>"
+    )
     monkeypatch.setattr(nf, "_fetch_hn", Mock(side_effect=DataSourceError("hn down")))
-    monkeypatch.setattr(nf, "_fetch_rss", Mock(side_effect=EmptyResultError("rss empty")))
-    items = nf.news_fetch("AI", *NOV_DEC, cache=JsonCache(tmp_path), clock=lambda: FROZEN)
-    assert items, "seed must supply items when HN and RSS fail"
-    assert all(i.prov.source == "seed" for i in items)
-    assert any("ChatGPT" in i.title for i in items)
+    monkeypatch.setattr(nf, "_fetch_rss", Mock(return_value=rss))
+    items = nf.news_fetch("NVIDIA", *NOV_DEC, cache=JsonCache(tmp_path), clock=lambda: FROZEN)
+    assert items and all(i.prov.source == "yahoo_rss" for i in items)
 
 
 # --- T1.4/T1.5 provenance completeness + url mirroring ---------------------- #
@@ -77,11 +81,10 @@ def test_date_range_excludes_out_of_window() -> None:
     assert not any(i.published_at.startswith("2023") for i in items)  # GPT-4 excluded
 
 
-# --- T1.8 graceful degradation: exhausted ladder returns [] ----------------- #
-def test_exhausted_ladder_returns_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+# --- T1.8 graceful degradation: both live sources fail → [] ----------------- #
+def test_exhausted_sources_return_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(nf, "_fetch_hn", Mock(side_effect=DataSourceError("down")))
     monkeypatch.setattr(nf, "_fetch_rss", Mock(side_effect=DataSourceError("down")))
-    # A window no seed event falls in → seed also empty → [] (not an exception).
     items = nf.news_fetch("AI", "1990-01-01", "1990-12-31",
                           cache=JsonCache(tmp_path), clock=lambda: FROZEN)
-    assert items == []
+    assert items == []  # no hardcoded fallback — graceful empty
