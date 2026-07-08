@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import html
 import json
+from bisect import bisect_right
 from pathlib import Path
 from typing import Any
 
-from ...models import Alignment, AnalysisResult, InflectionKind
+from ...models import Alignment, AnalysisResult, CuratedEvent, Impact, InflectionKind
 from ...tools._util import valid_http_url
 
 _VENDOR = Path(__file__).parent / "vendor" / "echarts.min.js"
@@ -37,34 +38,47 @@ def _js_json(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
 
 
-def _drill_fragment(alignment: Alignment) -> str:
-    """Pre-escaped HTML for one inflection's drill-down panel (rationale +
-    impact + lag + clickable, validated source links)."""
-    blocks: list[str] = []
-    for ev in alignment.events:
-        links: list[str] = []
-        for url in ev.news_refs:
-            if valid_http_url(url):
-                href = html.escape(url, quote=True)
-                links.append(
-                    f'<a href="{href}" target="_blank" rel="noopener">{html.escape(url)}</a>'
-                )
-            else:  # never emit an unvalidated href — keep escaped text only
-                links.append(html.escape(url))
-        srcs = " · ".join(links) if links else "—"
-        blocks.append(
-            f'<div class="evt">'
-            f'<div class="evt-h">'
-            f'<span class="badge {html.escape(ev.impact.value)}">{html.escape(ev.impact.value.upper())}</span> '
-            f'<b>{html.escape(ev.title)}</b> '
-            f'<span class="date">{html.escape(ev.date)}</span></div>'
-            f'<div class="rat">{html.escape(ev.rationale)}</div>'
-            f'<div class="meta">lag {alignment.lag_days}d · confidence {alignment.confidence:.0%}</div>'
-            f'<div class="src">Sources: {srcs}</div>'
-            f"</div>"
+_MARKER_SIZE = {Impact.HIGH: 17, Impact.MEDIUM: 13, Impact.LOW: 10}
+
+
+def _snap(date: str, dates: list[str]) -> str | None:
+    """Nearest bar date on/before `date` (events fall on weekends/holidays too)."""
+    if not dates:
+        return None
+    i = bisect_right(dates, date) - 1
+    return dates[i] if i >= 0 else dates[0]
+
+
+def _event_fragment(ev: CuratedEvent, alignment: Alignment | None) -> str:
+    """Pre-escaped drill-down for one event: impact + rationale + clickable
+    sources, and — when it aligns to an inflection — the lag/confidence/why."""
+    links: list[str] = []
+    for url in ev.news_refs:
+        if valid_http_url(url):
+            href = html.escape(url, quote=True)
+            links.append(f'<a href="{href}" target="_blank" rel="noopener">{html.escape(url)}</a>')
+        else:  # never emit an unvalidated href — keep escaped text only
+            links.append(html.escape(url))
+    srcs = " · ".join(links) if links else "—"
+    aligned = ""
+    if alignment is not None:
+        aligned = (
+            f'<div class="meta">↳ aligned to {html.escape(alignment.inflection.date)} '
+            f"({html.escape(alignment.inflection.kind.value)}) · lag {alignment.lag_days}d · "
+            f"confidence {alignment.confidence:.0%}</div>"
+            f'<div class="expl">{html.escape(alignment.explanation)}</div>'
         )
-    expl = html.escape(alignment.explanation)
-    return f'<div class="drill"><div class="expl">{expl}</div>{"".join(blocks)}</div>'
+    return (
+        f'<div class="evt">'
+        f'<div class="evt-h">'
+        f'<span class="badge {html.escape(ev.impact.value)}">{html.escape(ev.impact.value.upper())}</span> '
+        f'<b>{html.escape(ev.title)}</b> '
+        f'<span class="date">{html.escape(ev.date)}</span></div>'
+        f'<div class="rat">{html.escape(ev.rationale)}</div>'
+        f"{aligned}"
+        f'<div class="src">Sources: {srcs}</div>'
+        f"</div>"
+    )
 
 
 def build_view_model(result: AnalysisResult) -> dict[str, Any]:
@@ -78,33 +92,38 @@ def build_view_model(result: AnalysisResult) -> dict[str, Any]:
 
     inflections = [
         {
-            "date": inf.date,
-            "price": inf.price,
-            "kind": inf.kind.value,
-            "color": KIND_COLORS.get(inf.kind, "#888"),
-            "significance": inf.significance,
+            "date": inf.date, "price": inf.price, "kind": inf.kind.value,
+            "color": KIND_COLORS.get(inf.kind, "#888"), "significance": inf.significance,
         }
         for inf in result.inflections
     ]
 
-    events = []
-    drill: dict[str, str] = {}
-    for a in result.alignments:
-        d = a.inflection.date
-        events.append({"date": d, "price": price_at.get(d, a.inflection.price)})
-        drill[d] = _drill_fragment(a)
+    # Which curated events aligned to an inflection (keyed by title+date).
+    aln_by_key = {(e.title, e.date): a for a in result.alignments for e in a.events}
+
+    # EVERY curated event becomes a marker at its (snapped) trading day.
+    events: list[dict[str, Any]] = []
+    frags: dict[str, list[str]] = {}
+    seen: set[str] = set()
+    for ev in result.events:
+        snapped = _snap(ev.date, dates)
+        if snapped is None:
+            continue
+        aln = aln_by_key.get((ev.title, ev.date))
+        frags.setdefault(snapped, []).append(_event_fragment(ev, aln))
+        if snapped not in seen:
+            seen.add(snapped)
+            events.append({
+                "date": snapped, "price": price_at.get(snapped, 0.0),
+                "size": _MARKER_SIZE.get(ev.impact, 12), "aligned": aln is not None,
+            })
+    drill = {d: '<div class="drill">' + "".join(fl) + "</div>" for d, fl in frags.items()}
 
     data = {
-        "ticker": result.ticker,
-        "range": list(result.range),
-        "generatedAt": result.generated_at,
-        "dates": dates,
-        "ohlc": ohlc,
-        "vol": vol,
-        "fetched": fetched,
-        "inflections": inflections,
-        "events": events,
-        "hasEvents": bool(result.alignments),
+        "ticker": result.ticker, "range": list(result.range),
+        "generatedAt": result.generated_at, "dates": dates, "ohlc": ohlc, "vol": vol,
+        "fetched": fetched, "inflections": inflections, "events": events,
+        "hasEvents": bool(result.events),
     }
     return {"data": data, "drill": drill}
 
@@ -219,9 +238,14 @@ _TEMPLATE = """<!doctype html>
       {{ name: 'Volume', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: D.vol,
          itemStyle: {{ color: '#b0bec5' }} }},
       {{ name: 'Events', type: 'scatter',
-         data: D.events.map(function(e) {{ return {{ value: [e.date, e.price], date: e.date }}; }}),
-         symbol: 'circle', symbolSize: 15,
-         itemStyle: {{ color: '#3949ab', borderColor: '#fff', borderWidth: 2 }}, z: 10 }}
+         data: D.events.map(function(e) {{
+           return {{ value: [e.date, e.price], date: e.date, size: e.size,
+                    itemStyle: {{ color: e.aligned ? '#3949ab' : '#7986cb',
+                                 borderColor: e.aligned ? '#fff' : '#c5cae9',
+                                 borderWidth: 2 }} }};
+         }}),
+         symbol: 'circle',
+         symbolSize: function(v, p) {{ return (p.data && p.data.size) || 12; }}, z: 10 }}
     ]
   }};
   chart.setOption(option);

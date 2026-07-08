@@ -22,7 +22,7 @@ from typing import Any
 class Provenance:
     """Where a datum or claim came from. `source_url` must be clickable."""
 
-    source: str          # "yfinance" | "stooq" | "hackernews" | "yahoo_rss" | "seed" | ...
+    source: str          # "yfinance" | "stooq" | "hackernews" | "yahoo_rss" | ...
     source_url: str      # canonical URL a human can click to verify (never empty)
     fetched_at: str      # ISO-8601 UTC, e.g. "2025-07-07T05:00:00Z"
     query: str = ""      # the exact query/ticker/range used, for reproducibility

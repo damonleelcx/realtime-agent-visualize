@@ -57,7 +57,9 @@ SYSTEM_PROMPT = (
     "event into one event citing all their URLs. For each event assign a "
     "category, an impact rating of high/medium/low, and a grounded rationale. "
     "You MUST cite at least one input URL per event in news_refs; only cite URLs "
-    "that appear in the input. Return structured events only — no prose."
+    "that appear in the input. Keep each rationale to ONE concise sentence and "
+    "return only genuinely material events (roughly the top 40). Return "
+    "structured events only — no prose."
 )
 
 

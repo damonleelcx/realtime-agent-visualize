@@ -1,9 +1,10 @@
 """`news_fetch` tool — industry headlines with provenance (docs/phases/P1).
 
 Deterministic, no LLM inside. Fallback ladder: Hacker News Algolia (keyless)
-→ Yahoo Finance RSS (keyless) → committed seed file. Each NewsItem.url is
-mirrored into prov.source_url so every item is clickable. Exhausted ladder
-returns [] (graceful — news is optional; the K-line still renders).
+→ Yahoo Finance RSS (keyless). Fully dynamic — nothing hardcoded; the LLM
+curator (P3) turns these live headlines into material events. Each NewsItem.url
+is mirrored into prov.source_url so every item is clickable. No news available →
+[] (graceful — news is optional; the K-line still renders).
 """
 
 from __future__ import annotations
@@ -11,19 +12,15 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import asdict
-from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ..cache import JsonCache, cache_key
 from ..models import NewsItem, Provenance
 from ._serde import newsitem_from
 from ._util import date_to_ts, in_range, now_iso, ts_to_date
-from .errors import DataSourceError, EmptyResultError
+from .errors import DataSourceError
 
 Clock = Callable[[], str]
-
-_NEWS_SOURCES = ("hackernews", "yahoo_rss", "seed")
-_SEED_PATH = Path(__file__).parent / "data" / "news_seed.json"
 
 _HN_API = "https://hn.algolia.com/api/v1/search_by_date"
 _HN_ITEM = "https://news.ycombinator.com/item?id={oid}"
@@ -130,30 +127,6 @@ def _rss_date(pub: str) -> str:
     return ""
 
 
-def load_seed(
-    query: str, start: str, end: str, at: str, path: Path | None = None
-) -> list[NewsItem]:
-    """Committed curated events, range-filtered. Last resort — never network."""
-    src = path or _SEED_PATH
-    try:
-        rows = json.loads(src.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise DataSourceError(f"seed load: {exc}") from exc
-
-    items: list[NewsItem] = []
-    for r in rows:
-        date = r["published_at"]
-        if not in_range(date, start, end):
-            continue
-        url = r["url"]
-        items.append(
-            NewsItem(r["title"], url, date, r.get("summary", ""),
-                     Provenance("seed", url, at, query, note=r.get("category", "")))
-        )
-    items.sort(key=lambda n: n.published_at)
-    return items
-
-
 # --------------------------------------------------------------------------- #
 # Dispatch + public tool
 # --------------------------------------------------------------------------- #
@@ -171,6 +144,17 @@ def _parse_news(
     return parse_rss(raw, query, start, end, at, limit)
 
 
+def _dedup(items: list[NewsItem]) -> list[NewsItem]:
+    seen: set[str] = set()
+    out: list[NewsItem] = []
+    for it in items:
+        if it.url in seen:
+            continue
+        seen.add(it.url)
+        out.append(it)
+    return out
+
+
 def news_fetch(
     query: str,
     start: str,
@@ -182,10 +166,12 @@ def news_fetch(
     refresh: bool = False,
     clock: Clock | None = None,
 ) -> list[NewsItem]:
-    """Fetch industry headlines for `query` in `[start, end]`.
+    """Fetch industry news for `query` in `[start, end]` — fully DYNAMIC.
 
-    HN → RSS → seed ladder. Records the actual source in each Provenance so a
-    degraded run is visible downstream. Exhausted ladder returns [] (graceful).
+    Live headlines are pulled at run time from Hacker News (Algolia, historical
+    search) → Yahoo Finance RSS fallback. Nothing is hardcoded: the LLM curator
+    (P3) turns these real headlines into the material AI-industry events. Each
+    item keeps its true `Provenance.source`. No news available → [] (graceful).
     """
     cache = cache if cache is not None else JsonCache()
     clock = clock or now_iso
@@ -197,19 +183,17 @@ def news_fetch(
             return [newsitem_from(d) for d in cached]
 
     at = clock()
-    for source in _NEWS_SOURCES:
+    items: list[NewsItem] = []
+    for source in ("hackernews", "yahoo_rss"):        # dynamic sources, HN then RSS
         try:
-            if source == "seed":
-                items = load_seed(query, start, end, at)
-            else:
-                raw = _fetch_news(source, query, start, end, limit)
-                items = _parse_news(source, raw, query, start, end, at, limit)
-            if not items:
-                raise EmptyResultError(f"{source}: 0 in-range items")
-            if not no_cache:
-                cache.set(key, [asdict(n) for n in items])
-            return items
+            raw = _fetch_news(source, query, start, end, limit)
+            items = _parse_news(source, raw, query, start, end, at, limit)
+            if items:
+                break
         except DataSourceError:
             continue
-
-    return []  # graceful degradation — news is optional
+    items = _dedup(items)[:limit]
+    items.sort(key=lambda n: n.published_at)
+    if not no_cache:
+        cache.set(key, [asdict(n) for n in items])
+    return items

@@ -34,6 +34,17 @@ MAX_TURNS = 40          # global cap on step attempts (steps + retries)
 MAX_STEP_RETRIES = 2    # per-step retries before a step is declared wedged
 TOP_N_INFLECTIONS = 25
 
+# Search news by company name, not the ticker — forums/news index "NVIDIA", not "NVDA".
+_COMPANY = {
+    "NVDA": "NVIDIA", "TSLA": "Tesla", "AAPL": "Apple", "MSFT": "Microsoft",
+    "GOOGL": "Google", "GOOG": "Google", "AMZN": "Amazon", "META": "Meta",
+    "AMD": "AMD", "INTC": "Intel", "TSM": "TSMC",
+}
+
+
+def _news_query(ticker: str) -> str:
+    return f"{_COMPANY.get(ticker.upper(), ticker)} AI"
+
 # The plan the Loop displays; mirrors the read-path in overview §5.
 _PLAN_STEPS = [
     "fetch market data (tool: market_data)",
@@ -53,6 +64,10 @@ class TerminationError(RuntimeError):
 
 class ValidationError(RuntimeError):
     """The rendered run failed an invariant check."""
+
+
+class RunCancelled(RuntimeError):
+    """The caller cancelled the run (e.g. the dashboard Stop button)."""
 
 
 @dataclass(frozen=True)
@@ -90,10 +105,11 @@ class Orchestrator:
         window_days: int = DEFAULT_WINDOW_DAYS,
         max_turns: int = MAX_TURNS,
         on_event: EventCb = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> RunResult:
         clk = clock or now_iso
         emit = on_event or (lambda _e: None)
-        query = f"{ticker} AI chip OpenAI"
+        query = _news_query(ticker)
         ctx: dict[str, Any] = {"feedback": []}
 
         def s_market(c: dict[str, Any]) -> None:
@@ -144,6 +160,8 @@ class Orchestrator:
         emit({"type": "plan", "steps": self.plan("")})
         turns = 0
         for name, fn, detail in steps:
+            if should_cancel is not None and should_cancel():
+                raise RunCancelled(f"cancelled before '{name}'")
             emit({"type": "act", "step": name})
             turns = self._act(name, fn, ctx, turns, max_turns, emit)
             emit({"type": "observe", "step": name, "detail": detail(ctx)})
@@ -250,12 +268,13 @@ def run(
     market_data_fn: MarketFn = market_data,
     news_fetch_fn: NewsFn = news_fetch,
     on_event: EventCb = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> RunResult:
     """Module-level convenience wrapper returning the full RunResult (used by the CLI/web)."""
     return Orchestrator().run(
         ticker, start, end, outputs, client=client, cache=cache, clock=clock,
         out_dir=out_dir, market_data_fn=market_data_fn, news_fetch_fn=news_fetch_fn,
-        on_event=on_event,
+        on_event=on_event, should_cancel=should_cancel,
     )
 
 
