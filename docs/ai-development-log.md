@@ -38,6 +38,34 @@ Work proceeded as **doc-first, phase-gated**:
 | P3 | `event_curator` + `signal_analyst` subagents with the boundary-enforcement logic; `event-align` skill; stub-LLM tests. |
 | P4 | `report_builder` + `kline-viz` (interactive HTML) + `office-export` (xlsx/pptx/docx); vendored ECharts; escaping/self-containment tests. |
 | P5 | Loop/Harness orchestration, backend seam, CLI, the aggregate invariant suite, integration tests, these docs, CI. |
+| P6 | Conversational live dashboard (SSE stream of the Harness loop, event cards, inline chart, Stop button). |
+
+## Post-build iteration (driven by user review)
+
+After the P0–P6 build, several changes came directly from the user testing it —
+the kind of feedback loop the exercise is really about:
+
+- **De-hardcoded the events.** An interim version shipped a curated seed of ~28
+  AI-industry events. The user correctly flagged that this hardcodes the "行业大事件"
+  and defeats the *dynamic* requirement. Removed the seed entirely; `news_fetch`
+  now pulls live from Hacker News (Algolia historical search) → Yahoo RSS, and the
+  LLM curator turns real headlines into events. Also fixed the query to search the
+  **company name** (HN indexes "NVIDIA", not the ticker "NVDA") — the real reason
+  coverage had looked thin.
+- **Show every curated event on the chart** (not only inflection-aligned ones),
+  sized by impact — so the richer dynamic event set is actually visible.
+- **Conversational UI redesign.** The dashboard was reworked from a side-panel
+  checklist into a chat: the agent narrates its workflow, then presents event
+  cards, the chart, and downloads as messages.
+- **Robustness from real failures.** A live wide-window run hit a truncated-JSON
+  error (the curator's structured output exceeded `max_tokens`). Fixed by raising
+  the output budget and adding a **salvage** path that keeps the complete objects
+  from a cut-off response — plus a concise-output instruction to bound it.
+- **Stop button** with cooperative cancellation (`should_cancel` checked at step
+  boundaries; an SSE disconnect triggers it server-side).
+
+Each change kept `ruff` + `mypy --strict` + `pytest` green (90 tests) and was
+verified live (real data, real curation, browser screenshots).
 
 ## Key human judgement & corrections
 
@@ -68,6 +96,6 @@ human direction mattered, not just code generation:
 ## Reproducibility
 
 Everything above is reproducible from the repo: `pytest -q` runs the whole suite
-offline (81 tests), and `examples/live_smoke.py` / `python -m agent.run` exercise
+offline (90 tests), and `examples/live_smoke.py` / `python -m agent.run` exercise
 the live path. The committed `samples/` were produced by the same code path the
 integration test drives, so a stale sample would surface as a failing test.

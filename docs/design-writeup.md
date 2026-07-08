@@ -62,7 +62,16 @@ language and `AnalysisResult` is the single payload all four exporters render.
 - **New deliverable** → a new render function + one line in `report_builder`'s
   dispatch table; it consumes the same `AnalysisResult`.
 - **Termination**: a hard `MAX_TURNS` / per-step retry cap means a wedged step
-  raises `TerminationError` and the run fails cleanly instead of hanging.
+  raises `TerminationError` and the run fails cleanly instead of hanging;
+  cooperative `should_cancel` (checked at step boundaries) lets the dashboard's
+  Stop button halt a run.
+- **Live surface** ([`agent/web/`](../agent/web)): the orchestrator's `on_event`
+  hook is streamed over SSE to a conversational dashboard that narrates the loop
+  and renders the events + chart + files inline. It's a *view* of the same run —
+  no analysis logic lives there.
+- **Robustness**: the LLM boundary ([`agent/llm.py`](../agent/llm.py)) salvages a
+  structured response truncated at `max_tokens` (keeps the complete objects,
+  closes the array) rather than failing the whole run.
 
 ## Known limitations / next steps
 

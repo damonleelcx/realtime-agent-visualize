@@ -18,8 +18,9 @@ Sample output (real NVDA run, ChatGPT era): [`samples/NVDA_analysis.html`](sampl
 
 Given a natural-language task, the agent autonomously:
 
-1. **Fetches market data** (OHLCV) and **industry news** for the same window — two source categories,
-   both keyless.
+1. **Fetches market data** (OHLCV) and **live industry news** for the same window — two source
+   categories, both keyless. News is fully **dynamic** (Hacker News historical search → Yahoo RSS);
+   nothing about the events is hardcoded.
 2. **Detects price inflections** (turning points, breakouts, breakdowns) with a *deterministic
    algorithm* — re-runnable, not a model guess.
 3. **Curates the material AI events** and assigns impact ratings, then **aligns** each inflection to
@@ -70,11 +71,12 @@ ARTIFACTS:  artifacts/NVDA_analysis.{html,xlsx,pptx,docx}
 - **Where do I get a key?** [console.anthropic.com](https://console.anthropic.com) → API Keys. It goes
   in `.env` only (git-ignored) and is **never** written into any produced artifact.
 
-### Live dashboard — watch the agent loop (optional)
+### Conversational dashboard — chat with the agent (optional)
 
-A local web app where you enter a ticker and **watch the Harness stream
-`Plan→Act→Observe→Validate` in real time**, then the interactive chart renders inline with the
-Office files as downloads:
+A local **chat** where you ask the agent to analyze a stock and **watch it work**: it streams its
+`Plan→Act→Observe→Validate` loop as conversation, then presents the curated **events**, the
+interactive **chart**, and the **downloadable files** inline. A **Stop** button cancels a run
+mid-flight (the orchestrator halts at the next step boundary).
 
 ```bash
 pip install -e ".[dev,full,web,sdk]"  # + fastapi/uvicorn (web) + anthropic (LLM curation)

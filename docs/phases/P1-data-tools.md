@@ -7,6 +7,13 @@
 
 ## Spec — what & why
 
+> **Post-build update:** the original plan below included a committed `news_seed.json`
+> of curated AI-industry events as `news_fetch`'s last-resort fallback. That was
+> **removed** — hardcoding "行业大事件" conflicts with the *dynamic* requirement.
+> `news_fetch` is now fully dynamic (Hacker News historical search → Yahoo RSS;
+> no news available → `[]`), and the LLM curator (P3) derives events from the live
+> headlines. The `seed`/`news_seed.json` mentions below are historical.
+
 Implement the two **deterministic data tools** — `market_data` and `news_fetch` — that feed every later
 phase. These are the backbone of traceability ([overview §5](../00-overview.md#5-architecture-system-design-steps-45-mapped-to-the-harness-model)):
 each **has no LLM inside**, is pure w.r.t. its args + cache, and stamps a clickable `Provenance` on
