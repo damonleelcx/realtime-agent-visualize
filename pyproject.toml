@@ -49,7 +49,7 @@ files = ["agent"]
 
 [[tool.mypy.overrides]]
 module = [
-    "requests.*", "yfinance.*", "ruptures.*", "anthropic.*",
+    "requests.*", "yfinance.*", "ruptures.*", "anthropic.*", "claude_agent_sdk.*",
     "openpyxl.*", "pptx.*", "docx.*", "fastapi.*", "uvicorn.*", "starlette.*",
 ]
 ignore_missing_imports = true

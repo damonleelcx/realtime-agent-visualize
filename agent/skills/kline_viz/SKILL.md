@@ -1,3 +1,8 @@
+---
+name: kline-viz
+description: Render one AnalysisResult into an interactive, self-contained HTML candlestick report with AI-industry event markers aligned to price inflections and clickable back to their sources. Load in the report_builder when producing the browser deliverable.
+---
+
 # Skill: kline-viz
 
 Renders one `AnalysisResult` into an **interactive, self-contained HTML** report.

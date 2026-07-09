@@ -160,15 +160,16 @@ Harness     agent/orchestrator.py Plan → Act → Observe → Validate → Retr
 agent/
   run.py            CLI entrypoint (Loop)
   orchestrator.py   Harness: plan → act → observe → validate → retry (turn-capped)
-  backend.py        LLM backend seam (SDK ↔ bare-API swap)
-  llm.py            LLMClient protocol + AnthropicClient (structured output)
+  backend.py        LLM backend selection (default: Claude Agent SDK; AGENT_BACKEND=sdk|api|auto)
+  sdk_backend.py    Claude Agent SDK client — drives claude_agent_sdk.query() (default backend)
+  llm.py            LLMClient protocol + bare-API AnthropicClient (fallback backend)
   models.py         shared, provenance-carrying data contract
   cache.py          on-disk keyed cache
   tools/            deterministic tools (no LLM)
   subagents/        isolated-context subagents (event_curator, signal_analyst, report_builder)
   skills/           templates + injected know-how (event-align, kline-viz, office-export + vendor/)
 docs/               overview, conventions, per-phase spec/plan/test, design writeup, AI log
-tests/              90 tests: unit · contract · integration · security · invariants
+tests/              102 tests: unit · contract · integration · security · invariants
 samples/            committed example deliverables (real NVDA run)
 examples/           live_smoke.py — end-to-end against the real model
 artifacts/          generated deliverables (git-ignored)

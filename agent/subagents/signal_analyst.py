@@ -132,6 +132,6 @@ def signal_analyst(
     """Align inflections to events. Empty inflections or events → [] (no LLM call)."""
     if not inflections or not events:
         return []
-    system = load_skill("event-align") + _RULES
+    system = load_skill("event-align").instructions + _RULES
     raw = client.complete(system, build_user_prompt(inflections, events), ANALYST_SCHEMA)
     return enforce_alignments(list(raw.get("alignments", [])), inflections, events, window_days)

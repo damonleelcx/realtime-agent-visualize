@@ -152,7 +152,9 @@ Every hop passes a **provenance-carrying record** (see [`01-conventions.md`](./0
 
 The SDK's tool/subagent/skill primitives let us *demonstrate* the architecture division the prompt asks us to justify, instead of re-implementing an orchestration layer. Python wins the data/reporting-library ecosystem outright.
 
-> If the SDK is unavailable in the grading environment, the same architecture is implemented over a thin bare-API loop behind the identical `run_analysis()` façade — see [`P5`](./phases/P5-orchestration-testing.md). The boundaries (tools/subagents/skills) are ours, not the SDK's, so they survive a backend swap.
+**How it's wired (not just declared).** [`agent/sdk_backend.py`](../agent/sdk_backend.py)'s `ClaudeAgentClient` drives `claude_agent_sdk.query()` behind the `LLMClient.complete()` seam, and [`agent/backend.py`](../agent/backend.py)'s `default_client()` returns it as the **default** backend. `AGENT_BACKEND` selects explicitly — `sdk` (force the Agent SDK), `api` (force the bare Messages API), or `auto` (default: Agent SDK when its package is importable, else the bare-API fallback).
+
+> The bare-API `AnthropicClient` is the promised fallback for a grading box without the SDK/CLI — the *same* architecture over a thin Messages-API loop behind the identical `run()` façade (see [`P5`](./phases/P5-orchestration-testing.md)). The boundaries (tools/subagents/skills) are ours, not the SDK's, so they survive the backend swap — which is exactly why the offline test suite injects a deterministic stub through the same seam.
 
 ---
 

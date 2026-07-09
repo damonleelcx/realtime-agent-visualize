@@ -1,3 +1,8 @@
+---
+name: office-export
+description: Render one AnalysisResult into the local Office trio — an xlsx backtest workbook, a pptx decision deck, and a docx narrative report — each row and section carrying its source_url for traceability. Load in the report_builder when producing the Office deliverables.
+---
+
 # Skill: office-export
 
 Renders one `AnalysisResult` into the Office trio — all pure functions, no fetch,

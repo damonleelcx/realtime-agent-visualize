@@ -29,7 +29,20 @@ def _infer_ticker(task: str, default: str = "NVDA") -> str:
     return m.group(1) if m else default
 
 
+def _force_utf8_stdio() -> None:
+    """Keep non-ASCII step labels (→, ↔) printable on a legacy Windows console.
+
+    A cp936/GBK console raises UnicodeEncodeError on those glyphs; reconfigure to
+    UTF-8 with replacement so the Loop never crashes on its own progress output.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_stdio()
     parser = argparse.ArgumentParser(
         prog="agent.run",
         description="Autonomous market-data + AI-event analysis agent.",

@@ -1,3 +1,8 @@
+---
+name: event-align
+description: Align a detected price inflection to the AI-industry event(s) that plausibly caused it, ranking by causal plausibility and keeping every claim traceable to a real input source. Load in the signal_analyst subagent when correlating inflections with curated events.
+---
+
 # Skill: event-align
 
 Reusable know-how for the `signal_analyst` subagent: how to align a detected
