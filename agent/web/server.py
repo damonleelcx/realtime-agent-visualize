@@ -28,7 +28,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..backend import default_client
-from ..models import AnalysisResult
+from ..comparison import run_comparison
+from ..models import AnalysisResult, ComparisonResult
 from ..orchestrator import RunCancelled, TerminationError, ValidationError, _default_range, run
 
 HERE = Path(__file__).parent
@@ -52,6 +53,33 @@ def _event_cards(result: AnalysisResult) -> list[dict[str, Any]]:
         })
     cards.sort(key=lambda c: c["date"])
     return cards
+
+
+def _comparison_summary(result: ComparisonResult) -> dict[str, Any]:
+    """Flatten a ComparisonResult into JSON the chat renders as tables."""
+    return {
+        "title": result.title,
+        "days": len(result.aligned_dates),
+        "metrics": [
+            {
+                "ticker": m.ticker, "total": m.total_return, "cagr": m.cagr,
+                "vol": m.annual_vol, "sharpe": m.sharpe, "maxdd": m.max_drawdown,
+            }
+            for m in result.metrics
+        ],
+        "backtests": [
+            {
+                "name": b.config.name, "rebalance": b.config.rebalance,
+                "total": b.total_return, "maxdd": b.max_drawdown,
+                "rebalances": b.n_rebalances, "cost_drag": b.cost_drag,
+            }
+            for b in result.backtests
+        ],
+        "correlations": [
+            {"a": c.ticker_a, "b": c.ticker_b, "pearson": c.pearson}
+            for c in result.correlations
+        ],
+    }
 
 
 class NullLLM:
@@ -139,6 +167,65 @@ def create_app() -> FastAPI:
                     yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
             finally:
                 cancel.set()  # stream closed (Stop / disconnect) → cancel the pipeline
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.get("/api/compare")
+    def api_compare(
+        tickers: str = "GC=F,BTC-USD",
+        start: str = "",
+        end: str = "",
+        rebalance: str = "monthly",
+        outputs: str = "html,xlsx,pptx,docx",
+    ) -> StreamingResponse:
+        """Deterministic multi-asset comparison + backtest (no LLM / key needed)."""
+        run_id = uuid.uuid4().hex[:12]
+        out_dir = RUNS / run_id
+        s, e = _default_range(start, end)
+        syms = [t.strip() for t in tickers.split(",") if t.strip()]
+        q: queue.Queue[Any] = queue.Queue()
+        cancel = threading.Event()
+
+        def worker() -> None:
+            q.put({"type": "cmp_mode", "tickers": syms, "range": [s, e], "rebalance": rebalance})
+            try:
+                rr = run_comparison(
+                    syms, s, e,
+                    [o.strip() for o in outputs.split(",") if o.strip()],
+                    rebalance=rebalance, out_dir=str(out_dir),
+                    # drop the generic 'result' event; we emit a richer cmp_result below
+                    on_event=lambda ev: q.put(ev) if ev.get("type") != "result" else None,
+                    should_cancel=cancel.is_set,
+                )
+                q.put({"type": "cmp_result", **_comparison_summary(rr.result)})
+                items = [
+                    {"name": Path(p).name, "url": f"/runs/{run_id}/{Path(p).name}"}
+                    for p in rr.artifacts
+                ]
+                html = next((it["url"] for it in items if it["name"].endswith(".html")), None)
+                q.put({"type": "artifacts", "items": items, "html": html})
+                q.put({"type": "done"})
+            except RunCancelled:
+                q.put({"type": "stopped"})
+            except (ValueError, TerminationError, ValidationError) as exc:
+                q.put({"type": "error", "message": str(exc)})
+            except Exception as exc:  # noqa: BLE001 — surface any failure to the UI
+                q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+            finally:
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        async def gen() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_event_loop()
+            try:
+                while True:
+                    item = await loop.run_in_executor(None, q.get)
+                    if item is None:
+                        break
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+            finally:
+                cancel.set()
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 

@@ -27,6 +27,7 @@ sdk = ["claude-agent-sdk>=0.1", "anthropic>=0.40"]
 
 [project.scripts]
 agent-run = "agent.run:main"
+agent-compare = "agent.compare_run:main"
 
 [tool.setuptools.packages.find]
 include = ["agent*"]
@@ -41,6 +42,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Embeds an HTML/JS template; long markup lines don't benefit from wrapping.
 "agent/skills/kline_viz/render.py" = ["E501"]
+"agent/skills/compare_viz/render.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

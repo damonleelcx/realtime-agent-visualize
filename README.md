@@ -31,6 +31,14 @@ Given a natural-language task, the agent autonomously:
 Every datum and conclusion carries a clickable `source_url` from fetch time, so the whole thing is
 **可溯源** (traceable) end to end.
 
+It also **generalizes to a comparison task** — e.g. **Gold vs Bitcoin** — via a second, deterministic
+(LLM-free) pipeline that reuses the same layers to produce the interactive HTML + Office trio with a
+rebalanced-vs-buy-&-hold **strategy backtest** (metrics, drawdown, correlation, transaction-cost drag):
+
+```bash
+python -m agent.compare_run --tickers GC=F,BTC-USD --rebalance monthly --outputs html,xlsx,pptx,docx
+```
+
 ---
 
 ## Quick start (local)
@@ -42,7 +50,7 @@ Requires **Python 3.11+** (tested on 3.13).
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. run the full suite offline — no network, no API key (90 tests)
+# 2. run the full suite offline — no network, no API key (122 tests)
 pytest -q
 ```
 
@@ -158,18 +166,21 @@ Harness     agent/orchestrator.py Plan → Act → Observe → Validate → Retr
 
 ```
 agent/
-  run.py            CLI entrypoint (Loop)
+  run.py            CLI entrypoint — single-ticker analysis (Loop)
+  compare_run.py    CLI entrypoint — multi-asset comparison + backtest (agent-compare)
   orchestrator.py   Harness: plan → act → observe → validate → retry (turn-capped)
+  comparison.py     comparison Harness (deterministic, reuses the Act/Retry above)
   backend.py        LLM backend selection (default: Claude Agent SDK; AGENT_BACKEND=sdk|api|auto)
   sdk_backend.py    Claude Agent SDK client — drives claude_agent_sdk.query() (default backend)
   llm.py            LLMClient protocol + bare-API AnthropicClient (fallback backend)
-  models.py         shared, provenance-carrying data contract
+  models.py         shared, provenance-carrying data contract (analysis + comparison)
   cache.py          on-disk keyed cache
-  tools/            deterministic tools (no LLM)
+  tools/            deterministic tools (no LLM): market_data, news_fetch, detect_inflections, compare
   subagents/        isolated-context subagents (event_curator, signal_analyst, report_builder)
-  skills/           templates + injected know-how (event-align, kline-viz, office-export + vendor/)
+  skills/           standard Agent-Skill packages: event-align, kline-viz, office-export,
+                    compare-viz, compare-office (+ shared echarts vendor/)
 docs/               overview, conventions, per-phase spec/plan/test, design writeup, AI log
-tests/              102 tests: unit · contract · integration · security · invariants
+tests/              122 tests: unit · contract · integration · security · invariants
 samples/            committed example deliverables (real NVDA run)
 examples/           live_smoke.py — end-to-end against the real model
 artifacts/          generated deliverables (git-ignored)

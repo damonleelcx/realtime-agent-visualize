@@ -64,8 +64,18 @@
   #composer .row { max-width:880px; margin:0 auto; padding:12px 20px; display:flex; gap:8px; align-items:center; }
   #q { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--fg); border-radius:10px;
        padding:11px 14px; font-size:14px; }
-  #composer input[type=date] { background:var(--panel); border:1px solid var(--line); color:var(--mut);
+  #composer input[type=date], #composer #tickers, #composer #mode {
+       background:var(--panel); border:1px solid var(--line); color:var(--mut);
        border-radius:10px; padding:9px 8px; font-size:12px; }
+  #composer #mode { color:var(--fg); cursor:pointer; }
+  #composer #tickers { color:var(--fg); min-width:150px; }
+  /* comparison summary tables */
+  table.cmp { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:8px; }
+  table.cmp th, table.cmp td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--line); }
+  table.cmp th:first-child, table.cmp td:first-child { text-align:left; }
+  table.cmp thead th { color:var(--mut); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.03em; }
+  table.cmp .pos { color:var(--ok); } table.cmp .neg { color:var(--err); }
+  .cmp-h { color:var(--mut); font-size:12px; margin:10px 0 2px; text-transform:uppercase; letter-spacing:.04em; }
   #send { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:11px 18px;
           font-weight:600; font-size:14px; cursor:pointer; min-width:74px; }
   #send.stop { background:var(--err); }
@@ -83,9 +93,15 @@
 
 <form id="composer">
   <div class="row">
+    <select id="mode" title="Mode">
+      <option value="analyze">Analyze</option>
+      <option value="compare">Compare</option>
+    </select>
     <input id="q" autocomplete="off"
            value="Analyze NVDA and mark AI industry events on the inflection points"
            placeholder="Ask about a stock… e.g. Analyze NVDA over the last 5 years">
+    <input id="tickers" autocomplete="off" value="GC=F,BTC-USD" title="Comma-separated symbols"
+           placeholder="GC=F,BTC-USD" style="display:none">
     <input id="start" type="date" value="2022-09-01" title="Start">
     <input id="end" type="date" value="2023-07-01" title="End">
     <button id="send" type="submit">Send</button>
@@ -95,7 +111,7 @@
 <script>
 const thread = document.getElementById("thread"), chat = document.getElementById("chat"),
       sendBtn = document.getElementById("send");
-let es = null, work = null, steps = {};
+let es = null, work = null, steps = {}, currentMode = "analyze";
 const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
 const scroll = () => { chat.scrollTop = chat.scrollHeight; };
 
@@ -119,13 +135,27 @@ function startRun() {
   const ticker = inferTicker(q);
   const start = document.getElementById("start").value, end = document.getElementById("end").value;
   bubble("user").textContent = q;
-  work = null; steps = {};
+  work = null; steps = {}; currentMode = "analyze";
   setRunning(true);
   const params = new URLSearchParams({ ticker, start, end });
   es = new EventSource("/api/run?" + params.toString());
   es.onmessage = onEvent;
   es.onerror = () => { finish(); };
 }
+
+function startCompare() {
+  const tickers = document.getElementById("tickers").value.trim() || "GC=F,BTC-USD";
+  const start = document.getElementById("start").value, end = document.getElementById("end").value;
+  bubble("user").textContent = "Compare " + tickers + " (monthly-rebalanced backtest)";
+  work = null; steps = {}; currentMode = "compare";
+  setRunning(true);
+  const params = new URLSearchParams({ tickers, start, end, rebalance: "monthly" });
+  es = new EventSource("/api/compare?" + params.toString());
+  es.onmessage = onEvent;
+  es.onerror = () => { finish(); };
+}
+
+function pct(x) { const c = x >= 0 ? "pos" : "neg"; return `<span class="${c}">${(x*100).toFixed(1)}%</span>`; }
 
 function stopRun() {
   if (es) { es.close(); es = null; }          // closing the stream cancels the pipeline server-side
@@ -146,6 +176,37 @@ function onEvent(ev) {
       const b = bubble("agent");
       b.innerHTML = `On it — analyzing <b>${esc(d.ticker)}</b> from <b>${esc(d.range[0])}</b> to <b>${esc(d.range[1])}</b>. ` +
         `<span class="modepill">${d.llm ? "LLM event curation on" : "no API key → chart + inflections only"}</span>`;
+      break;
+    }
+    case "cmp_mode": {
+      const b = bubble("agent");
+      b.innerHTML = `On it — comparing <b>${esc(d.tickers.join(" vs "))}</b> from <b>${esc(d.range[0])}</b> to <b>${esc(d.range[1])}</b>. ` +
+        `<span class="modepill">deterministic · ${esc(d.rebalance)}-rebalanced backtest · no API key needed</span>`;
+      break;
+    }
+    case "cmp_result": {
+      if (work) work.querySelector("h3").textContent = "Comparison complete";
+      const b = bubble("agent");
+      let html = `Done — compared <b>${esc(d.title)}</b> over <b>${d.days}</b> common trading days.`;
+      html += '<div class="cmp-h">Per-asset (buy &amp; hold)</div>';
+      html += '<table class="cmp"><thead><tr><th>Asset</th><th>Total</th><th>CAGR</th><th>Vol</th><th>Sharpe</th><th>Max DD</th></tr></thead><tbody>';
+      d.metrics.forEach(m => {
+        html += `<tr><td>${esc(m.ticker)}</td><td>${pct(m.total)}</td><td>${pct(m.cagr)}</td>` +
+          `<td>${(m.vol*100).toFixed(1)}%</td><td>${m.sharpe.toFixed(2)}</td><td>${pct(m.maxdd)}</td></tr>`;
+      });
+      html += '</tbody></table>';
+      html += '<div class="cmp-h">Strategy backtests</div>';
+      html += '<table class="cmp"><thead><tr><th>Strategy</th><th>Total</th><th>Max DD</th><th>Rebals</th><th>Cost drag</th></tr></thead><tbody>';
+      d.backtests.forEach(x => {
+        html += `<tr><td>${esc(x.name)}</td><td>${pct(x.total)}</td><td>${pct(x.maxdd)}</td>` +
+          `<td>${x.rebalances}</td><td>${(x.cost_drag*100).toFixed(2)}%</td></tr>`;
+      });
+      html += '</tbody></table>';
+      if (d.correlations.length) {
+        const c = d.correlations[0];
+        html += `<div class="cmp-h">Correlation</div><div class="card"><div class="r">${esc(c.a)} vs ${esc(c.b)} daily-return Pearson: <b>${c.pearson >= 0 ? "+" : ""}${c.pearson.toFixed(2)}</b></div></div>`;
+      }
+      b.innerHTML = html;
       break;
     }
     case "plan": {
@@ -198,7 +259,9 @@ function onEvent(ev) {
     }
     case "artifacts": {
       const b = bubble("agent");
-      b.innerHTML = "Here's the interactive K-line — click any event marker to trace it back to its source:";
+      b.innerHTML = currentMode === "compare"
+        ? "Here's the interactive comparison — rebased performance, backtest equity curves, and rolling correlation:"
+        : "Here's the interactive K-line — click any event marker to trace it back to its source:";
       if (d.html) { const f = document.createElement("iframe"); f.src = d.html; b.appendChild(f); }
       let dl = '<div class="dl">';
       d.items.forEach(it => { dl += `<a href="${esc(it.url)}" download>↓ ${esc(it.name)}</a>`; });
@@ -215,9 +278,18 @@ function onEvent(ev) {
 
 function finish() { if (es) { es.close(); es = null; } setRunning(false); }
 
+const modeSel = document.getElementById("mode");
+modeSel.addEventListener("change", () => {
+  const compare = modeSel.value === "compare";
+  document.getElementById("q").style.display = compare ? "none" : "";
+  document.getElementById("tickers").style.display = compare ? "" : "none";
+});
+
 document.getElementById("composer").addEventListener("submit", (e) => {
   e.preventDefault();
-  if (es) { stopRun(); } else { startRun(); }   // toggles Send ↔ Stop
+  if (es) { stopRun(); }                          // toggles Send ↔ Stop
+  else if (modeSel.value === "compare") { startCompare(); }
+  else { startRun(); }
 });
 </script>
 </body>

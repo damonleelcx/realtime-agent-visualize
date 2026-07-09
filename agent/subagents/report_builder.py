@@ -13,7 +13,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..models import AnalysisResult
+from ..models import AnalysisResult, ComparisonResult
+from ..skills.compare_office import to_docx as cmp_docx
+from ..skills.compare_office import to_pptx as cmp_pptx
+from ..skills.compare_office import to_xlsx as cmp_xlsx
+from ..skills.compare_viz import render_comparison_html
 from ..skills.kline_viz import render_html
 from ..skills.loader import load_skill
 from ..skills.office_export import to_docx, to_pptx, to_xlsx
@@ -46,5 +50,43 @@ def report_builder(
         load_skill(skill_dir)  # enforce the render skill's package/contract exists
         data = build(result)
         path = artifact_io.write(f"{out_dir}/{result.ticker}_analysis.{ext}", data)
+        paths.append(path)
+    return paths
+
+
+# format -> (skill package dir, extension, builder) for the comparison payload.
+_CMP_BUILDERS: dict[str, tuple[str, str, Callable[[ComparisonResult], str | bytes]]] = {
+    "html": ("compare_viz", "html", render_comparison_html),
+    "xlsx": ("compare_office", "xlsx", cmp_xlsx),
+    "pptx": ("compare_office", "pptx", cmp_pptx),
+    "docx": ("compare_office", "docx", cmp_docx),
+}
+
+
+def _slug(title: str) -> str:
+    """Filesystem-safe stem from a comparison title (e.g. 'Gold vs Bitcoin')."""
+    stem = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")
+    while "__" in stem:
+        stem = stem.replace("__", "_")
+    return stem or "comparison"
+
+
+def comparison_report_builder(
+    result: ComparisonResult,
+    outputs: list[str],
+    *,
+    out_dir: str = "artifacts",
+) -> list[str]:
+    """Write each requested comparison deliverable and return the absolute paths."""
+    stem = _slug(result.title)
+    paths: list[str] = []
+    for fmt in outputs:
+        entry = _CMP_BUILDERS.get(fmt)
+        if entry is None:
+            continue
+        skill_dir, ext, build = entry
+        load_skill(skill_dir)  # enforce the render skill's package/contract exists
+        data = build(result)
+        path = artifact_io.write(f"{out_dir}/{stem}_comparison.{ext}", data)
         paths.append(path)
     return paths

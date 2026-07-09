@@ -35,6 +35,7 @@ The two graded axes are **(1) engineering quality** — clean, maintainable, ext
 | F6 | Export Word / PPT / Excel deliverables from the same analysis payload | ✅ |
 | F7 | **Traceability**: every event annotation & conclusion links back to a `source_url` or a raw data row | ✅ |
 | F8 | Run end-to-end from a single command with a task description | ✅ |
+| F9 | **Generalize to a comparison task** — multi-asset (e.g. gold vs bitcoin) metrics + strategy backtest → the same HTML + Word/PPT/Excel system | ✅ (see [P7](./phases/P7-multi-asset-comparison.md)) |
 | — | Real-time streaming quotes / intraday tick data | ❌ out of scope (daily bars only) |
 | — | Trade execution / portfolio management | ❌ out of scope |
 | — | Auth / multi-tenant / hosted service | ❌ out of scope (local CLI) |
@@ -50,6 +51,17 @@ The agent decomposes this itself. A thin typed façade also exists for tests/CI:
 ```
 run_analysis(ticker="NVDA", start="2020-07-01", end="2025-07-01", outputs=["html","xlsx"]) -> AnalysisResult
 ```
+
+**Second entrypoint — the comparison task (F9, [P7](./phases/P7-multi-asset-comparison.md)):**
+
+```
+$ python -m agent.compare_run --tickers GC=F,BTC-USD --rebalance monthly   # gold vs bitcoin
+run_comparison(["GC=F","BTC-USD"], start, end, ["html","xlsx","pptx","docx"]) -> ComparisonRunResult
+```
+
+A deterministic, LLM-free pipeline that reuses the same layers (tools → skills →
+report builder → Harness) to produce the interactive HTML + Office trio for a
+multi-asset comparison with a rebalanced-vs-buy-&-hold backtest.
 
 ---
 
